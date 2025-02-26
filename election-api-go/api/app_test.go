@@ -6,6 +6,7 @@ import (
 	"errors"
 	"fmt"
 	"io/ioutil"
+	"math"
 	"net/http"
 	"net/http/httptest"
 	"os"
@@ -55,7 +56,6 @@ func Test5Results(t *testing.T) {
 		t.Errorf("Scoreboard was nil")
 		return
 	}
-
 }
 
 func Test100Results(t *testing.T) {
@@ -73,7 +73,7 @@ func Test100Results(t *testing.T) {
 	// assert LD == 12
 	// assert LAB == 56
 	// assert CON == 31
-	//Winner = none
+	// Winner = none
 	if scoreboard == nil {
 		t.Errorf("Scoreboard was nil")
 		return
@@ -121,6 +121,63 @@ func TestAllResults(t *testing.T) {
 	if scoreboard == nil {
 		t.Errorf("Scoreboard was nil")
 		return
+	}
+}
+
+func TestScoreboardCalculation(t *testing.T) {
+	_ = a.results.Reset()
+	err := postResults(650)
+	if err != nil {
+		t.Errorf("Error posting results: %v", err)
+		return
+	}
+
+	scoreboard, err := getScoreboard(t)
+	if err != nil {
+		t.Errorf("Error getting scoreboard: %v", err)
+		return
+	}
+
+	expectedSeats := map[string]int{
+		"LD":  62,
+		"LAB": 349,
+		"CON": 210,
+	}
+	for party, expected := range expectedSeats {
+		if scoreboard.Seats[party] != expected {
+			t.Errorf("Expected %s to have %d seats, but got %d", party, expected, scoreboard.Seats[party])
+		}
+	}
+
+	if scoreboard.Winner != "LAB" {
+		t.Errorf("Expected LAB to be the winner, but got %s", scoreboard.Winner)
+	}
+}
+
+func TestVoteShareCalculation(t *testing.T) {
+	_ = a.results.Reset()
+	err := postResults(650)
+	if err != nil {
+		t.Errorf("Error posting results: %v", err)
+		return
+	}
+
+	scoreboard, err := getScoreboard(t)
+	if err != nil {
+		t.Errorf("Error getting scoreboard: %v", err)
+		return
+	}
+
+	expectedVoteShare := map[string]float64{
+		"LD":  22.00,
+		"LAB": 35.00,
+		"CON": 32.00,
+	}
+	for party, expected := range expectedVoteShare {
+		if math.Round(scoreboard.VoteShare[party]) != math.Round(expected) {
+			t.Errorf("Expected %s to have %.0f%% of the votes, but got %.0f%%",
+				party, expected, scoreboard.VoteShare[party])
+		}
 	}
 }
 
