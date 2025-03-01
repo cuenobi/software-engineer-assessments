@@ -6,6 +6,7 @@ import (
 	"errors"
 	"fmt"
 	"io/ioutil"
+	"log"
 	"math"
 	"net/http"
 	"net/http/httptest"
@@ -137,6 +138,9 @@ func TestScoreboardCalculation(t *testing.T) {
 		t.Errorf("Error getting scoreboard: %v", err)
 		return
 	}
+
+	r, _ := json.Marshal(scoreboard)
+	log.Println("Scoreboard: ", string(r))
 
 	expectedSeats := map[string]int{
 		"LD":  62,

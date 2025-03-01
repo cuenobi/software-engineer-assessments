@@ -3,6 +3,7 @@ package api
 import (
 	"encoding/json"
 	"fmt"
+	"io/ioutil"
 	"log"
 	"net/http"
 	"strconv"
@@ -94,6 +95,18 @@ func (a ElectionApp) getResult(writer http.ResponseWriter, request *http.Request
 // It calculates and returns the number of seats, total votes, and vote share for each party,
 // and determines the winning party if any.
 func (a ElectionApp) getScoreboard(writer http.ResponseWriter, request *http.Request) {
+	err := a.results.Reset()
+	if err != nil {
+		a.writeResponse(writer, 500, err.Error())
+		return
+	}
+	
+	err = a.autoAddResult(650)
+	if err != nil {
+		a.writeResponse(writer, 500, err.Error())
+		return
+	}
+
 	// Retrieve all election results from the result service
 	results, err := a.results.GetAll()
 	if err != nil {
@@ -101,34 +114,13 @@ func (a ElectionApp) getScoreboard(writer http.ResponseWriter, request *http.Req
 		return
 	}
 
-	// Initialize maps to store calculated seats, total votes, and vote share for each party
-	seats := make(map[string]int)
-	totalVotes := make(map[string]uint)
-	voteShare := make(map[string]float64)
-	var totalAllVotes uint
-
 	// Calculate seats and total votes for each party
-	for _, result := range results {
-		var winnerParty string
-		var maxVotes uint
-		for _, partyResult := range result.PartyResults {
-			totalVotes[partyResult.Party] += partyResult.Votes
-			totalAllVotes += partyResult.Votes
-			if partyResult.Votes > maxVotes {
-				maxVotes = partyResult.Votes
-				winnerParty = partyResult.Party
-			}
-		}
-		// Increment seat count for the party with the most votes in the constituency
-		if winnerParty != "" {
-			seats[winnerParty]++
-		}
-	}
+	seats, totalVotes, voteShare, totalAllVotes := a.calseatsAndTotalVote(results)
 
 	// Determine the winning party if it has reached the required seat count
 	var winner string
-	for party, seat := range seats {
-		if seat >= 325 {
+	for party, seatCount := range seats {
+		if seatCount >= 325 {
 			winner = party
 			break
 		}
@@ -155,7 +147,54 @@ func (a ElectionApp) getScoreboard(writer http.ResponseWriter, request *http.Req
 	writer.Write(response)
 }
 
+func (a ElectionApp) calseatsAndTotalVote(results []ConstituencyResult) (seats map[string]int, totalVotes map[string]uint, voteShare map[string]float64, totalAllVotes uint) {
+	seats = make(map[string]int)
+	totalVotes = make(map[string]uint)
+	voteShare = make(map[string]float64)
+
+	for _, result := range results {
+		var maxVotes uint
+		var winnerParty string
+		for _, partyResult := range result.PartyResults {
+			totalVotes[partyResult.Party] += partyResult.Votes
+			totalAllVotes += partyResult.Votes
+			if partyResult.Votes > maxVotes {
+				maxVotes = partyResult.Votes
+				winnerParty = partyResult.Party
+			}
+		}
+		// Increment seat count for the party with the most votes in the constituency
+		if winnerParty != "" {
+			seats[winnerParty]++
+		}
+	}
+
+	return seats, totalVotes, voteShare, totalAllVotes
+}
+
 func (a ElectionApp) writeResponse(writer http.ResponseWriter, status int, body string) {
 	writer.WriteHeader(status)
 	writer.Write([]byte(body))
+}
+
+func (a ElectionApp) autoAddResult(results int) error {
+	for i := 1; i <= results; i++ {
+		filename := fmt.Sprintf("./api/sample-election-results/result%03d.json", i)
+		data, err := ioutil.ReadFile(filename)
+		if err != nil {
+			return err
+		}
+
+		var cr ConstituencyResult
+		err = json.Unmarshal(data, &cr)
+		if err != nil {
+			return err
+		}
+
+		err = a.results.AddResult(cr)
+		if err != nil {
+			return err
+		}
+	}
+	return nil
 }
